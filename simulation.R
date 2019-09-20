@@ -3,7 +3,10 @@ library(xtable)
 library(ggplot2)
 library(microbenchmark)
 library(gridExtra)
-# 30 time points
+# t:100 warm up points
+# t: 300 time points
+# N: 200 subjects per sample
+
 
 set.seed(19283641)
 # t <- seq(1,120,4)
@@ -13,30 +16,81 @@ set.seed(19283641)
 # N <- 200
 # simulate X,Y, [2 time points ]
 generateX <- function(N,mu,sigma,t){
-  X <- matrix(rep(NA,t*N),ncol = N)
+  # t time points + 1 col of 1's
+  X <- matrix(rep(NA,(t+1)*N),nrow = N)
+  X[,1] <- rep(1,N)
   for (i in 1:t){
-    X[i,] <- rnorm(N,mean = mu,sd= sigma)
+    X[,i+1] <- rnorm(N,mean = mu,sd= sigma)
   }
   return(X)
 }
-# X <- generateX(N,0,0.5,30)
-# X: 200 * 30
+# N:200, t:100
+#X <- generateX(200,0,0.5,100)
+# X: 200 * 101
 
-# matrix epsilon 
-# epsilon <- matrix(c(rep(4*exp(-(t-1)),N)), 
-#                     ncol = length(t),nrow = 200, byrow = TRUE)
 # generate Y
-generateY <- function(X,beta,epsilon,N,t){
-  Xbeta <- matrix(rep(NA,N*t),nrow = t,ncol = N)
+generateY <- function(X,betas,epsilon,N,t){
+  # X*beta: 200 * 100
+  Y <- matrix(rep(NA,N*t),nrow = N,ncol = t)
   for (i in 1:t){
-    Xbeta[i,] <- X[i,] * beta[i,]
+    # X: 200 * 2
+    # beta: 2 * 1
+    Y[,i] <- X[,c(1,i+1)] %*% matrix(betas[i,]) + epsilon[i,]
   }
-  Y <- t(Xbeta) + epsilon
   return(Y)
 }
 
-# Y <- generateY(X,beta,epsilon,200,30)
+## generate beta for warm-up set: size = 100
+N <- 2000
+lambda <- 0.7
 
+t <- 100
+beta0 <- 15 + 20*sin(c(1:t)*pi/300)
+beta1 <- -3 + (100-c(1:t))^3/5000
+betas <- cbind(beta0,beta1)
+
+# generate warm up sample
+X <- generateX(N,0,0.5,t)
+epsilon <- matrix(4*exp(-(t-1)), nrow = N, byrow = TRUE)
+Y <- generateY(X,betas,epsilon,2000,100)
+# generate initial Y
+# Y: 200 * 1
+Y_init <- Y[,1]
+# X: 2*200
+X_init <- t(X[,c(1,2)])
+# A:2*2
+A_init <- X_init %*% t(X_init)
+# beta: 2*1
+beta_init <- solve(A_init) %*% (X_init %*% Y_init)
+w_init <- lambda^(1-1)
+
+
+generateA <- function(w_old,A_old,X_new){
+  A_new <- w_old * A_old + X_new %*% t(X_new)
+  return (A_new)
+}
+
+#A <- generateA(w_init,A_init,t(X[,c(1,3)]))
+
+UpdateBeta <- function(X,Y,N,t,lambda,w_old,A_old,beta_old){
+    beta_hat <- matrix(rep(NA,t*2),ncol = 2)
+    for (i in 2: t){
+      X_new <- t(X[,c(1,i+1)])
+      Y_new <- Y[,i]
+      A_new <- generateA(w_old,A_old,X_new)
+      beta_new <- solve(A_new)%*% 
+      (w_old*A_old %*% beta_old + X_new %*% Y_new)
+      beta_hat[i,] <- t(beta_new)
+      # update 
+      w_old <- lambda^(i-1)
+      A_old <- A_new
+      beta_old <- beta_new
+    }
+  return(beta_hat)
+}
+  
+b <- UpdateBeta(X,Y,4000,100,0.05,w_init,A_init, beta_init)
+  
 # estimate beta
 estimateBeta <- function(X,Y,lambda,t){
   est_beta <- c()
