@@ -9,12 +9,7 @@ library(gridExtra)
 
 
 set.seed(19283641)
-# t <- seq(1,120,4)
-# # generate beta
-# beta <- matrix(-5 + (30-t)^3/5000,nrow = length(t))
-# # 200 subjects
-# N <- 200
-# simulate X,Y, [2 time points ]
+
 generateX <- function(N,mu,sigma,t){
   # t time points + 1 col of 1's
   X <- matrix(rep(NA,(t+1)*N),nrow = N)
